@@ -1,2 +1,2 @@
 [workspace]
-members = ["app-*", "common", "sequential"]
+members = ["app-*", "common", "sequential", "distributed"]

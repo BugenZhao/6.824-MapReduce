@@ -1,0 +1,44 @@
+syntax = "proto3";
+package service;
+
+message MapTask {
+  uint64 index = 1;
+  repeated string files = 2;
+  uint64 n_reduce = 3;
+}
+
+message ReduceTask {
+  uint64 index = 1;
+  repeated string files = 2;
+}
+
+message Task {
+  string id = 3;
+  oneof inner {
+    MapTask map_task = 1;
+    ReduceTask reduce_task = 2;
+  }
+}
+
+service MapReduce {
+  rpc SayHello(HelloRequest) returns (HelloReply);
+
+  rpc PollTask(PollTaskRequest) returns (PollTaskReply);
+  rpc CompleteTask(CompleteTaskRequest) returns (CompleteTaskReply);
+}
+
+message HelloRequest { string name = 1; }
+message HelloReply { string message = 1; }
+
+message PollTaskRequest {}
+message PollTaskReply {
+  Task task = 1;
+  bool shutdown = 2;
+}
+
+message CompleteTaskRequest {
+  Task task = 1;
+  map<uint64, string> reduce_files = 2;
+}
+
+message CompleteTaskReply {}
