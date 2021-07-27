@@ -1,8 +1,9 @@
+use crossbeam_queue::ArrayQueue;
 use dashmap::DashMap;
 use distributed::{
     init_logger,
     service::{map_reduce_server::*, *},
-    Queue, ADDR,
+    ADDR,
 };
 use eyre::Result;
 use log::info;
@@ -40,7 +41,7 @@ pub struct Coordinator {
     shutdown: Mutex<Option<oneshot::Sender<()>>>,
 
     reduce_stage: AtomicBool,
-    pending_tasks: Arc<Queue<Task>>,
+    pending_tasks: Arc<ArrayQueue<Task>>,
     running_tasks: Arc<TaskMap>,
     reduce_files: DashMap<u64, Vec<String>>,
 
@@ -66,7 +67,7 @@ impl Coordinator {
                 id,
                 inner: Some(task::Inner::MapTask(task)),
             };
-            self.pending_tasks.push(task);
+            self.pending_tasks.push(task).unwrap();
         }
     }
 
@@ -84,7 +85,7 @@ impl Coordinator {
                 id,
                 inner: Some(task::Inner::ReduceTask(task)),
             };
-            self.pending_tasks.push(task);
+            self.pending_tasks.push(task).unwrap();
         }
     }
 
@@ -95,7 +96,7 @@ impl Coordinator {
             opt,
             shutdown: Mutex::new(Some(shutdown)),
             reduce_stage: AtomicBool::new(false),
-            pending_tasks: Arc::new(Queue::new(task_capacity)),
+            pending_tasks: Arc::new(ArrayQueue::new(task_capacity)),
             running_tasks: Arc::new(TaskMap::new()),
             reduce_files: DashMap::new(),
             retry_handlers: DashMap::new(),
@@ -120,7 +121,7 @@ impl Coordinator {
                 let mut task = o.remove_entry().1;
                 info!("task timeout: {:?}", task);
                 task.id = Uuid::new_v4().to_string();
-                pending.push(task);
+                pending.push(task).unwrap();
             }
         });
 
@@ -155,7 +156,7 @@ impl MapReduce for Coordinator {
         &self,
         _request: Request<PollTaskRequest>,
     ) -> Result<Response<PollTaskReply>, tonic::Status> {
-        let reply = match self.pending_tasks.pop().await {
+        let reply = match self.pending_tasks.pop() {
             Some(task) => {
                 assert!(self.reduce_stage() ^ matches!(task.inner, Some(task::Inner::MapTask(_))));
 
