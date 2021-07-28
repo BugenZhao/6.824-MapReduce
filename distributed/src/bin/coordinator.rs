@@ -26,6 +26,8 @@ use uuid::Uuid;
 
 #[derive(StructOpt, Debug)]
 pub struct Opt {
+    #[structopt(short, long, default_value = ADDR)]
+    listen: String,
     #[structopt(short = "r", long, default_value = "10")]
     n_reduce: u64,
     #[structopt(short, long)]
@@ -189,13 +191,15 @@ impl MapReduce for Coordinator {
             if let Some((_, handler)) = self.retry_handlers.remove(&task.id) {
                 handler.abort()
             }
-        }
 
-        for (reducer_index, file) in reduce_files {
-            self.reduce_files
-                .entry(reducer_index)
-                .or_default()
-                .push(file);
+            // only update `reduce_files` if the task is previously in `running_tasks`,
+            // that is, not treated as "dead worker"
+            for (reducer_index, file) in reduce_files {
+                self.reduce_files
+                    .entry(reducer_index)
+                    .or_default()
+                    .push(file);
+            }
         }
 
         if self.pending_tasks.is_empty() && self.running_tasks.is_empty() {
@@ -220,10 +224,10 @@ async fn main() -> Result<()> {
 
     let opt = Opt::from_args();
     let (tx, rx) = oneshot::channel::<()>();
+    let addr = opt.listen.parse()?;
     let coordinator = Coordinator::new(opt, tx);
 
     let server = MapReduceServer::new(coordinator);
-    let addr = ADDR.parse()?;
     Server::builder()
         .add_service(server)
         .serve_with_shutdown(addr, async move {

@@ -26,7 +26,8 @@ dist-workers:
 	make dist-worker
 
 clean:
-	rm -f out/mr-*-*
+	rm -f mr-out-0
+	rm -f out/mr-*
 
 merge:
 	cd out && sort mr-out* | grep . > mr-all

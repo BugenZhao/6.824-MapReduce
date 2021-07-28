@@ -2,7 +2,7 @@ use common::{load_app, LoadedApp};
 use distributed::{
     init_logger,
     service::{map_reduce_client::*, task::Inner, *},
-    ADDR,
+    temp_file, ADDR,
 };
 use eyre::Result;
 use futures::{future::try_join_all, FutureExt};
@@ -18,13 +18,16 @@ use std::{
 };
 use structopt::StructOpt;
 use tokio::{
-    fs::{read_to_string, File},
+    fs::{self, read_to_string, File},
     io::AsyncWriteExt,
     time,
 };
+use uuid::Uuid;
 
 #[derive(StructOpt, Debug)]
 struct Opt {
+    #[structopt(short, long, default_value = ADDR)]
+    connect: String,
     #[structopt(short, long)]
     app_name: PathBuf,
 }
@@ -116,7 +119,7 @@ impl Worker {
         let k2v2s = k1v1s.into_iter().flat_map(|(k, v)| self.app.map(k, v));
 
         let intermediate_filenames = (0..n_reduce)
-            .map(|j| format!("out/mr-{}-{}", index, j))
+            .map(|j| format!("out/mr-{}-{}-{}", index, j, Uuid::new_v4().to_string()))
             .collect_vec();
         let mut intermediate_files =
             try_join_all(intermediate_filenames.iter().map(File::create)).await?;
@@ -131,6 +134,7 @@ impl Worker {
             write_kv!(file, k2, v2).await?;
         }
 
+        // sync
         try_join_all(intermediate_files.iter().map(|f| f.sync_all())).await?;
 
         Ok(intermediate_filenames
@@ -171,13 +175,17 @@ impl Worker {
             k2v2s
         };
 
-        let mut output_file = File::create(format!("out/mr-out-{}", index)).await?;
+        let (temp_path, output_path) = (temp_file(), format!("out/mr-out-{}", index));
+        let mut temp_file = File::create(&temp_path).await?;
         for (k, kvs) in k2v2s.into_iter().group_by(|kv| kv.0.clone()).into_iter() {
             let output = self.app.reduce(k.clone(), kvs.map(|kv| kv.1).collect_vec());
-            write_kv!(output_file, k, output).await?;
+            write_kv!(temp_file, k, output).await?;
         }
 
-        output_file.sync_all().await?;
+        // sync
+        temp_file.sync_all().await?;
+        // rename
+        fs::rename(temp_path, output_path).await?;
 
         Ok(())
     }
@@ -188,7 +196,7 @@ async fn main() -> Result<()> {
     init_logger();
 
     let opt = Opt::from_args();
-    let addr = format!("http://{}", ADDR);
+    let addr = format!("http://{}", opt.connect);
     let client = MapReduceClient::connect(addr).await?;
 
     let worker = Worker::new(opt, client)?;
