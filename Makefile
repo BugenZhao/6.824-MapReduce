@@ -26,6 +26,7 @@ dist-workers:
 	make dist-worker
 
 clean:
+	rm -f mr-worker-*
 	rm -f mr-out-0
 	rm -f out/mr-*
 

@@ -6,7 +6,7 @@ use distributed::{
     ADDR,
 };
 use eyre::Result;
-use log::info;
+use log::{info, warn};
 use std::{
     path::PathBuf,
     sync::{
@@ -121,7 +121,7 @@ impl Coordinator {
             time::sleep(Duration::from_secs(5)).await;
             if let Entry::Occupied(o) = running.entry(id) {
                 let mut task = o.remove_entry().1;
-                info!("task timeout: {:?}", task);
+                warn!("task timeout: {:?}", task);
                 task.id = Uuid::new_v4().to_string();
                 pending.push(task).unwrap();
             }
